@@ -334,6 +334,64 @@ __OVERLOAD__ int __shfl_down(int a, unsigned int b, int c) {
    return nvvm_shfl_down_i32(a,b,c);
 }
 
+//   These are taken from hip headers.
+static constexpr int warpSize = 64;
+__NOOVERLO__
+__attribute__((convergent))
+ulong __llvm_amdgcn_icmp_i32(uint x, uint y, uint z) __asm("llvm.amdgcn.icmp.i32");
+__NOOVERLO__
+unsigned __llvm_amdgcn_groupstaticsize() __asm("llvm.amdgcn.groupstaticsize");
+__NOOVERLO__
+unsigned int __llvm_bitrev_b32(unsigned int src0) __asm("llvm.bitreverse.i32");
+__NOOVERLO__
+uint64_t __llvm_bitrev_b64(uint64_t src0) __asm("llvm.bitreverse.i64");
+__NOOVERLO__
+unsigned int __mbcnt_lo(unsigned int x, unsigned int y) __asm("llvm.amdgcn.mbcnt.lo");
+__NOOVERLO__
+unsigned int __mbcnt_hi(unsigned int x, unsigned int y) __asm("llvm.amdgcn.mbcnt.hi");
+__NOOVERLO__
+int __llvm_amdgcn_ds_bpermute(int index, int src) __asm("llvm.amdgcn.ds.bpermute");
+__NOOVERLO__
+int __llvm_amdgcn_ds_permute(int index, int src) __asm("llvm.amdgcn.ds.permute");
+__NOOVERLO__
+int __llvm_amdgcn_ds_swizzle(int index, int pattern) __asm("llvm.amdgcn.ds.swizzle");
+__NOOVERLO__
+int __llvm_amdgcn_move_dpp(int src, int dpp_ctrl, int row_mask, int bank_mask,
+                           bool bound_ctrl) __asm("llvm.amdgcn.mov.dpp.i32");
+__NOOVERLO__ unsigned int __lane_id() { return  __mbcnt_hi(-1, __mbcnt_lo(-1, 0)); }
+
+__OVERLOAD__
+int __shfl(int var, int src_lane, int width = warpSize) {
+    int self = __lane_id();
+    int index = src_lane + (self & ~(width-1));
+    return __llvm_amdgcn_ds_bpermute(index<<2, var);
+}
+__OVERLOAD__
+unsigned int __shfl(unsigned int var, int src_lane, int width = warpSize) {
+     union { int i; unsigned u; float f; } tmp; tmp.u = var;
+    tmp.i = __shfl(tmp.i, src_lane, width);
+    return tmp.u;
+}
+__OVERLOAD__
+float __shfl(float var, int src_lane, int width = warpSize) {
+    union { int i; unsigned u; float f; } tmp; tmp.f = var;
+    tmp.i = __shfl(tmp.i, src_lane, width);
+    return tmp.f;
+}
+__OVERLOAD__
+double __shfl(double var, int src_lane, int width = warpSize) {
+    static_assert(sizeof(double) == 2 * sizeof(int), "");
+    static_assert(sizeof(double) == sizeof(uint64_t), "");
+
+    int tmp[2]; __builtin_memcpy(tmp, &var, sizeof(tmp));
+    tmp[0] = __shfl(tmp[0], src_lane, width);
+    tmp[1] = __shfl(tmp[1], src_lane, width);
+
+    uint64_t tmp0 = (static_cast<uint64_t>(tmp[1]) << 32ull) | static_cast<uint32_t>(tmp[0]);
+    double tmp1;  __builtin_memcpy(&tmp1, &tmp0, sizeof(tmp0));
+    return tmp1;
+}
+
 #if 0
 // These are all the IR defined shuffles for future reference
 define i32 @nvvm.shfl.idx.i32(i32, i32, i32)
